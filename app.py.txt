@@ -1,0 +1,88 @@
+!pip install openai pandas streamlit gspread oauth2client
+
+import streamlit as st
+import pandas as pd
+from openai import OpenAI
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+# ---- OpenAI Key ----
+client = OpenAI(api_key="YOUR_API_KEY")
+
+# ---- Google Sheet Load ----
+sheet_url = "YOUR_GOOGLE_SHEET_LINK"
+df = pd.read_csv(sheet_url.replace("/edit?usp=sharing", "/export?format=csv"))
+
+def fetch_customer(identifier):
+    identifier = str(identifier).strip()
+    for col in ["Phone", "Aadhaar", "PAN", "Loan Account", "Consumer Name"]:
+        if col in df.columns:
+            match = df[df[col].astype(str).str.strip() == identifier]
+            if not match.empty:
+                return match.to_dict(orient="records")[0]
+    return None
+
+# ---- Website UI ----
+st.title("📌 Cashtm Loan Support AI")
+
+user_id = st.text_input("Enter Phone / Aadhaar / PAN / Loan Account")
+
+if st.button("Fetch Details"):
+    customer = fetch_customer(user_id)
+    if customer:
+        st.success(f"Customer Found: {customer.get('Consumer Name')}")
+        st.session_state["customer"] = customer
+    else:
+        st.error("Customer not found in database")
+
+if "customer" in st.session_state:
+    question = st.text_input("Ask your question")
+
+    if st.button("Send"):
+        q = question.lower()
+        data = st.session_state["customer"]
+
+        # KYC Request
+        if any(k in q for k in ["kyc", "aadhaar", "pan", "document"]):
+            st.write("""
+**KYC Documents Availability**
+📩 Email: collection.cashtm@gmail.com  
+☎ Support: 9211220702 / 9211220703 / 9211220704
+""")
+        # Payment Request
+        elif any(k in q for k in ["payment", "pay", "emi", "amount"]):
+            st.write("""
+**📌 Payment Instructions**
+Bank: YES BANK LIMITED  
+Account No.: 045626900000381  
+IFSC: YESB0000456  
+Branch: Chawri Bazaar, New Delhi 110006  
+☎ Confirmation: 09211220703  
+""")
+        # EMI Offer
+        elif any(k in q for k in ["emi", "installment", "installments"]):
+            st.write("""
+Sir agar aap full payment nahi कर पाते हैं तो हम 11–12 महीने की **no cost EMI** दे सकते हैं  
+No hidden charges, no penalty  
+Agreement मिलेगा + legally सुरक्षित  
+ज्यादा जानकारी के लिए support नंबर पर बात करें  
+☎ 9211220702 / 9211220703 / 9211220704
+""")
+        # After payment confirmation
+        elif any(k in q for k in ["update", "noc", "cibil"]):
+            st.write("""
+Payment ke baad payment proof **collection.cashtm@gmail.com** par भेज दें  
+2–3 घंटे में NOC मिल जाएगा  
+CIBIL **15–20 दिन** में update होगा  
+जल्दी update चाहिए तो CIBIL पर **dispute raise** करें
+""")
+        # General AI answer
+        else:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are NBFC loan support AI assistant."},
+                    {"role": "user", "content": str(data) + "\nQuestion: " + question}
+                ]
+            )
+            st.write(response.choices[0].message.content)
